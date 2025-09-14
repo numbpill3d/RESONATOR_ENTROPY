@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RESONATOR ENTROPY</title>
+  <style>
+    :root {
+      --bg-color: #000000;
+      --text-color: #ff0000;
+      --accent-color: #dd0000;
+      --panel-bg: #0a0a0a;
+      --grid-color: #330000;
+      --graph-color: #ff0000;
+      --highlight-color: #ff3333;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg-color);
+      color: var(--text-color);
+      font-family: 'MS Gothic', 'Osaka-Mono', monospace;
+      padding: 15px;
+      text-transform: uppercase;
+    }
+    .container { max-width: 1200px; margin: 0 auto; width: 100%; }
+    header { text-align: center; margin-bottom: 20px; }
+    h1 {
+      font-size: 2rem;
+      text-shadow: 0 0 10px var(--accent-color), 0 0 5px var(--text-color);
+      letter-spacing: 4px;
+      margin-bottom: 15px;
+    }
+    .nav { display: flex; justify-content: center; gap: 15px; }
+    .nav a {
+      color: var(--text-color);
+      text-decoration: none;
+      padding: 5px 10px;
+      border: 1px solid var(--accent-color);
+      transition: all 0.3s ease;
+    }
+    .nav a:hover { background: var(--accent-color); color: var(--bg-color); }
+    main {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 20px;
+    }
+    .panel {
+      background: var(--panel-bg);
+      padding: 15px;
+      border: 1px solid var(--accent-color);
+      box-shadow: 0 0 15px rgba(255, 0, 0, 0.1);
+    }
+    #entropy-display { text-align: center; }
+    #entropy {
+      font-size: 2.5rem;
+      font-weight: bold;
+      text-shadow: 0 0 8px var(--accent-color);
+      min-height: 50px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .vis-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+      border-bottom: 1px solid var(--grid-color);
+      padding-bottom: 10px;
+    }
+    .vis-title { font-size: 1.1rem; font-weight: bold; letter-spacing: 2px; }
+    .vis-controls { display: flex; gap: 10px; }
+    .vis-btn {
+      background: transparent;
+      color: var(--text-color);
+      border: 1px solid var(--accent-color);
+      padding: 5px 10px;
+      cursor: pointer;
+      font-family: 'MS Gothic', 'Osaka-Mono', monospace;
+      text-transform: uppercase;
+    }
+    .vis-btn.active { background: var(--accent-color); color: var(--bg-color); }
+    .canvas-container { width: 100%; height: 300px; background: #000; position: relative; }
+    canvas { display: block; width: 100%; height: 100%; }
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; }
+    .stat-box {
+      background: var(--panel-bg);
+      padding: 15px;
+      text-align: center;
+      border: 1px solid var(--accent-color);
+    }
+    .stat-title { font-size: 0.9rem; opacity: 0.7; margin-bottom: 5px; }
+    .stat-value { font-size: 1.5rem; font-weight: bold; }
+    footer { text-align: center; margin-top: 20px; font-size: 0.8rem; opacity: 0.6; }
+    .loading { animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0% { opacity: 0.3; } 50% { opacity: 1; } 100% { opacity: 0.3; } }
+    @media (min-width: 900px) {
+      main { grid-template-columns: 1fr 1fr; }
+      #entropy-display { grid-column: 1 / 3; }
+      .stats-grid { grid-column: 1 / 3; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>RESONATOR ENTROPY</h1>
+      <nav class="nav">
+        <a href="/">Visualizer</a>
+        <a href="/config">Settings</a>
+      </nav>
+    </header>
+    <main>
+      <div id="entropy-display" class="panel">
+        <div class="stat-title">Live Entropy Value</div>
+        <div id="entropy" class="loading">--</div>
+      </div>
+      <div class="panel">
+        <div class="vis-header">
+          <div class="vis-title">Temporal View</div>
+          <div class="vis-controls">
+            <button class="vis-btn active" data-vis="main" data-mode="waveform">Waveform</button>
+            <button class="vis-btn" data-vis="main" data-mode="phase">Phase Plot</button>
+          </div>
+        </div>
+        <div class="canvas-container"><canvas id="mainCanvas"></canvas></div>
+      </div>
+      <div class="panel">
+        <div class="vis-header">
+          <div class="vis-title">Statistical View</div>
+          <div class="vis-controls">
+            <button class="vis-btn active" data-vis="secondary" data-mode="bit_freq">Bit Freq</button>
+            <button class="vis-btn" data-vis="secondary" data-mode="glitch">Glitch</button>
+          </div>
+        </div>
+        <div class="canvas-container"><canvas id="secondaryCanvas"></canvas></div>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-box"><div class="stat-title">Average</div><div id="average" class="stat-value loading">--</div></div>
+        <div class="stat-box"><div class="stat-title">Samples</div><div id="count" class="stat-value loading">--</div></div>
+        <div class="stat-box"><div class="stat-title">WiFi</div><div id="wifi" class="stat-value loading">--</div></div>
+        <div class="stat-box"><div class="stat-title">Uptime</div><div id="uptime" class="stat-value loading">--</div></div>
+      </div>
+    </main>
+    <footer>RESONATOR FIRMWARE V1.1</footer>
+  </div>
+<script>
+let entropyData = [];
+let maxEntropyValue = 1;
+let visMode = { main: 'waveform', secondary: 'bit_freq' };
+const mainCanvas = document.getElementById('mainCanvas');
+const mainCtx = mainCanvas.getContext('2d');
+const secondaryCanvas = document.getElementById('secondaryCanvas');
+const secondaryCtx = secondaryCanvas.getContext('2d');
+function resizeCanvases() {
+  [mainCanvas, secondaryCanvas].forEach(canvas => {
+    canvas.width = canvas.parentElement.offsetWidth;
+    canvas.height = canvas.parentElement.offsetHeight;
+  });
+  requestAnimationFrame(updateVisualizations);
+}
+window.addEventListener('resize', resizeCanvases);
+document.querySelectorAll('.vis-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const visGroup = btn.dataset.vis;
+    const newMode = btn.dataset.mode;
+    visMode[visGroup] = newMode;
+    document.querySelectorAll(`.vis-btn[data-vis="${visGroup}"]`).forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    if (newMode === 'glitch') { // Clear glitch canvas on mode switch
+        secondaryCtx.fillStyle = '#000';
+        secondaryCtx.fillRect(0, 0, secondaryCanvas.width, secondaryCanvas.height);
+    }
+    requestAnimationFrame(updateVisualizations);
+  });
+});
+function fetchData() {
+  fetch("/history").then(r => r.json()).then(data => {
+    entropyData = data.history;
+    const currentMax = Math.max(...entropyData);
+    if (currentMax > maxEntropyValue) maxEntropyValue = currentMax;
+    document.getElementById('entropy').innerText = data.latest;
+    document.getElementById('average').innerText = data.average.toLocaleString();
+    document.getElementById('count').innerText = data.count.toLocaleString();
+    document.querySelectorAll('.loading').forEach(el => el.classList.remove('loading'));
+    requestAnimationFrame(updateVisualizations);
+  }).catch(err => console.error('History fetch error:', err));
+  fetch("/status").then(r => r.json()).then(data => {
+    document.getElementById('wifi').innerText = `${data.mode}: ${data.ip}`;
+    const s = data.uptime;
+    document.getElementById('uptime').innerText = `${Math.floor(s/3600)}h ${Math.floor(s%3600/60)}m ${s%60}s`;
+  }).catch(err => console.error('Status fetch error:', err));
+}
+function updateVisualizations() {
+    if (!entropyData || entropyData.length === 0) return;
+    drawMainVisualization();
+    drawSecondaryVisualization();
+}
+function drawMainVisualization() {
+    const ctx = mainCtx;
+    const w = mainCanvas.width;
+    const h = mainCanvas.height;
+    ctx.clearRect(0, 0, w, h);
+    // Draw grid
+    ctx.strokeStyle = '#330000'; ctx.lineWidth = 1; 
+    for(let i=0; i<=10; i++){ ctx.beginPath(); ctx.moveTo(0, i*h/10); ctx.lineTo(w, i*h/10); ctx.stroke(); }
+    for(let i=0; i<=20; i++){ ctx.beginPath(); ctx.moveTo(i*w/20, 0); ctx.lineTo(i*w/20, h); ctx.stroke(); }
+
+    if (visMode.main === 'waveform') {
+        ctx.strokeStyle = '#ff0000'; ctx.lineWidth = 1.5; ctx.beginPath();
+        for (let i = 0; i < entropyData.length; i++) {
+            const x = i * w / (entropyData.length - 1);
+            const y = h - (entropyData[i] / maxEntropyValue * h);
+            i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+    } else if (visMode.main === 'phase') {
+        ctx.fillStyle = '#ff0000';
+        for (let i = 1; i < entropyData.length; i++) {
+            const x = (entropyData[i-1] / maxEntropyValue) * w;
+            const y = h - (entropyData[i] / maxEntropyValue) * h;
+            ctx.globalAlpha = 0.5;
+            ctx.fillRect(x, y, 2, 2);
+        }
+        ctx.globalAlpha = 1.0;
+    }
+}
+function drawSecondaryVisualization() {
+    const ctx = secondaryCtx;
+    const w = secondaryCanvas.width;
+    const h = secondaryCanvas.height;
+    if (visMode.secondary === 'bit_freq') {
+        ctx.clearRect(0, 0, w, h);
+        // Draw grid
+        ctx.strokeStyle = '#330000'; ctx.lineWidth = 1; 
+        for(let i=0; i<=10; i++){ ctx.beginPath(); ctx.moveTo(0, i*h/10); ctx.lineTo(w, i*h/10); ctx.stroke(); }
+        // No vertical grid for bit freq for cleaner look
+
+        const bitCounts = new Array(32).fill(0);
+        entropyData.forEach(val => {
+            for (let i = 0; i < 32; i++) {
+                if ((val >> i) & 1) bitCounts[i]++;
+            }
+        });
+        const maxCount = Math.max(...bitCounts) || 1;
+        const barWidth = w / 32;
+        ctx.fillStyle = '#dd0000';
+        for (let i = 0; i < 32; i++) {
+            const barHeight = (bitCounts[i] / maxCount) * h;
+            ctx.fillRect(i * barWidth, h - barHeight, barWidth - 1, barHeight);
+        }
+    } else if (visMode.secondary === 'glitch') {
+        // Fade effect
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+        ctx.fillRect(0, 0, w, h);
+        // Draw new glitches
+        const val = entropyData[entropyData.length - 1];
+        const count = (val & 0xF) + 1; // 1 to 16 glitches
+        ctx.fillStyle = '#ff0000';
+        for (let i = 0; i < count; i++) {
+            const x = (val >> (16 + i%8)) % w;
+            const y = (val >> (8 + i%8)) % h;
+            const rectW = (val >> (4 + i%4)) % 50 + 5;
+            const rectH = (val >> (20 + i%4)) % 50 + 5;
+            ctx.globalAlpha = Math.random() * 0.5 + 0.2;
+            ctx.fillRect(x, y, rectW, rectH);
+        }
+        ctx.globalAlpha = 1.0;
+    }
+}
+document.addEventListener('DOMContentLoaded', () => {
+    resizeCanvases();
+    setInterval(fetchData, 2000);
+    fetchData();
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CONFIG :: RESONATOR</title>
+    <style>
+        :root {
+            --bg-color: #000000;
+            --text-color: #ff0000;
+            --accent-color: #dd0000;
+            --panel-bg: #0a0a0a;
+            --input-bg: #1a1a1a;
+            --border-color: #330000;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'MS Gothic', 'Osaka-Mono', monospace;
+            padding: 15px;
+            text-transform: uppercase;
+        }
+        .container { max-width: 800px; margin: 0 auto; }
+        header { text-align: center; margin-bottom: 30px; }
+        h1 {
+            font-size: 2rem;
+            text-shadow: 0 0 10px var(--accent-color), 0 0 5px var(--text-color);
+            letter-spacing: 4px;
+            margin-bottom: 15px;
+        }
+        .nav { display: flex; justify-content: center; gap: 15px; }
+        .nav a {
+            color: var(--text-color);
+            text-decoration: none;
+            padding: 5px 10px;
+            border: 1px solid var(--accent-color);
+        }
+        .nav a:hover { background: var(--accent-color); color: var(--bg-color); }
+        .config-panel {
+            background: var(--panel-bg);
+            padding: 25px;
+            border: 1px solid var(--accent-color);
+            margin-bottom: 30px;
+        }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; font-weight: bold; }
+        input[type="text"], input[type="password"], input[type="number"] {
+            width: 100%;
+            padding: 10px;
+            background: var(--input-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            font-family: 'MS Gothic', 'Osaka-Mono', monospace;
+            font-size: 1rem;
+        }
+        input:focus { outline: none; border-color: var(--accent-color); }
+        .checkbox-group { display: flex; align-items: center; }
+        input[type="checkbox"] { margin-right: 10px; width: 16px; height: 16px; accent-color: var(--accent-color); }
+        button {
+            background: transparent;
+            color: var(--text-color);
+            border: 1px solid var(--accent-color);
+            padding: 12px 20px;
+            font-weight: bold;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: block;
+            width: 100%;
+            margin-top: 10px;
+            font-family: 'MS Gothic', 'Osaka-Mono', monospace;
+            text-transform: uppercase;
+        }
+        button:hover { background: var(--accent-color); color: var(--bg-color); }
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            text-align: center;
+            display: none;
+            border: 1px solid;
+        }
+        .status.success { border-color: var(--accent-color); }
+        .status.error { border-color: #ff3333; color: #ff3333; }
+        .help-text { font-size: 0.8rem; margin-top: 5px; opacity: 0.7; }
+        footer { text-align: center; margin-top: 20px; font-size: 0.8rem; opacity: 0.6; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>System Configuration</h1>
+            <nav class="nav">
+                <a href="/">Visualizer</a>
+                <a href="/config">Settings</a>
+            </nav>
+        </header>
+        <main>
+            <section class="config-panel">
+                <form id="configForm">
+                    <div class="form-group">
+                        <label for="ssid">WiFi SSID:</label>
+                        <input type="text" id="ssid" name="ssid">
+                        <div class="help-text">Leave blank to use Access Point mode</div>
+                    </div>
+                    <div class="form-group">
+                        <label for="password">WiFi Password:</label>
+                        <input type="password" id="password" name="password">
+                    </div>
+                    <div class="form-group">
+                        <label for="sampleRate">Sample Rate (ms):</label>
+                        <input type="number" id="sampleRate" name="sampleRate" min="10" max="1000">
+                        <div class="help-text">Range: 10-1000ms. Lower is faster.</div>
+                    </div>
+                    <div class="form-group checkbox-group">
+                        <input type="checkbox" id="logging" name="logging">
+                        <label for="logging">Enable Serial Logging</label>
+                    </div>
+                    <button type="submit">Save & Reboot</button>
+                </form>
+                <div id="status" class="status"></div>
+            </section>
+        </main>
+        <footer>RESONATOR FIRMWARE V1.1</footer>
+    </div>
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            fetch("/status").then(r => r.json()).then(data => {
+                document.getElementById("ssid").value = data.ssid || "";
+                document.getElementById("sampleRate").value = data.sampleRate || 100;
+                document.getElementById("logging").checked = data.logging;
+            }).catch(err => console.error("Error fetching status:", err));
+        });
+        document.getElementById("configForm").addEventListener("submit", function(e) {
+            e.preventDefault();
+            const status = document.getElementById("status");
+            status.style.display = "block";
+            status.className = "status success";
+            status.innerHTML = "Saving configuration...";
+            fetch("/config", { method: "POST", body: new FormData(this) })
+            .then(response => response.text())
+            .then(text => {
+                status.innerHTML = text + "<br><br>Rebooting... Redirecting in 5s.";
+                setTimeout(() => { window.location.href = '/'; }, 5000);
+            })
+            .catch(error => {
+                status.className = "status error";
+                status.innerHTML = "Error saving: " + error;
+            });
+        });
+    </script>
+</body>
+</html>
