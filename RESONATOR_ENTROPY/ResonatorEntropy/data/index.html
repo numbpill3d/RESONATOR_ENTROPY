@@ -7,12 +7,14 @@
   <style>
     :root {
       --bg-color: #000000;
-      --text-color: #ff0000;
-      --accent-color: #dd0000;
-      --panel-bg: #0a0a0a;
-      --grid-color: #330000;
+      --text-color: #aa0000;
+      --accent-color: #cc0000;
+      --panel-bg: #0a0000;
+      --grid-color: #220000;
       --graph-color: #ff0000;
       --highlight-color: #ff3333;
+      --odd-color: #aa00ff;
+      --alert-color: #ff2222;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -23,12 +25,28 @@
       text-transform: uppercase;
     }
     .container { max-width: 1200px; margin: 0 auto; width: 100%; }
-    header { text-align: center; margin-bottom: 20px; }
+    header { text-align: center; margin-bottom: 20px; position: relative; }
     h1 {
       font-size: 2rem;
       text-shadow: 0 0 10px var(--accent-color), 0 0 5px var(--text-color);
       letter-spacing: 4px;
       margin-bottom: 15px;
+    }
+    #alert-indicator {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 20px;
+      height: 20px;
+      margin: 10px;
+      border-radius: 50%;
+      background: transparent;
+      box-shadow: 0 0 0 transparent;
+      transition: background 0.3s, box-shadow 0.3s;
+    }
+    #alert-indicator.active {
+      background: var(--alert-color);
+      box-shadow: 0 0 15px var(--alert-color);
     }
     .nav { display: flex; justify-content: center; gap: 15px; }
     .nav a {
@@ -80,7 +98,7 @@
       text-transform: uppercase;
     }
     .vis-btn.active { background: var(--accent-color); color: var(--bg-color); }
-    .canvas-container { width: 100%; height: 300px; background: #000; position: relative; }
+    .canvas-container { width: 100%; height: 250px; background: #000; position: relative; }
     canvas { display: block; width: 100%; height: 100%; }
     .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; }
     .stat-box {
@@ -105,6 +123,7 @@
   <div class="container">
     <header>
       <h1>RESONATOR ENTROPY</h1>
+      <div id="alert-indicator"></div>
       <nav class="nav">
         <a href="/">Visualizer</a>
         <a href="/config">Settings</a>
@@ -115,6 +134,15 @@
         <div class="stat-title">Live Entropy Value</div>
         <div id="entropy" class="loading">--</div>
       </div>
+
+      <!-- Oscilloscope -->
+      <div class="panel">
+        <div class="vis-header">
+          <div class="vis-title">Oscilloscope Feed</div>
+        </div>
+        <div class="canvas-container"><canvas id="oscilloscope"></canvas></div>
+      </div>
+
       <div class="panel">
         <div class="vis-header">
           <div class="vis-title">Temporal View</div>
@@ -125,6 +153,7 @@
         </div>
         <div class="canvas-container"><canvas id="mainCanvas"></canvas></div>
       </div>
+
       <div class="panel">
         <div class="vis-header">
           <div class="vis-title">Statistical View</div>
@@ -135,6 +164,7 @@
         </div>
         <div class="canvas-container"><canvas id="secondaryCanvas"></canvas></div>
       </div>
+
       <div class="stats-grid">
         <div class="stat-box"><div class="stat-title">Average</div><div id="average" class="stat-value loading">--</div></div>
         <div class="stat-box"><div class="stat-title">Samples</div><div id="count" class="stat-value loading">--</div></div>
@@ -142,24 +172,31 @@
         <div class="stat-box"><div class="stat-title">Uptime</div><div id="uptime" class="stat-value loading">--</div></div>
       </div>
     </main>
-    <footer>RESONATOR FIRMWARE V1.1</footer>
+    <footer>RESONATOR FIRMWARE V1.2</footer>
   </div>
+
 <script>
 let entropyData = [];
 let maxEntropyValue = 1;
 let visMode = { main: 'waveform', secondary: 'bit_freq' };
+
 const mainCanvas = document.getElementById('mainCanvas');
 const mainCtx = mainCanvas.getContext('2d');
 const secondaryCanvas = document.getElementById('secondaryCanvas');
 const secondaryCtx = secondaryCanvas.getContext('2d');
+const oscCanvas = document.getElementById('oscilloscope');
+const oscCtx = oscCanvas.getContext('2d');
+const alertIndicator = document.getElementById('alert-indicator');
+
 function resizeCanvases() {
-  [mainCanvas, secondaryCanvas].forEach(canvas => {
+  [mainCanvas, secondaryCanvas, oscCanvas].forEach(canvas => {
     canvas.width = canvas.parentElement.offsetWidth;
     canvas.height = canvas.parentElement.offsetHeight;
   });
   requestAnimationFrame(updateVisualizations);
 }
 window.addEventListener('resize', resizeCanvases);
+
 document.querySelectorAll('.vis-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     const visGroup = btn.dataset.vis;
@@ -167,111 +204,145 @@ document.querySelectorAll('.vis-btn').forEach(btn => {
     visMode[visGroup] = newMode;
     document.querySelectorAll(`.vis-btn[data-vis="${visGroup}"]`).forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    if (newMode === 'glitch') { // Clear glitch canvas on mode switch
+    if (newMode === 'glitch') {
         secondaryCtx.fillStyle = '#000';
         secondaryCtx.fillRect(0, 0, secondaryCanvas.width, secondaryCanvas.height);
     }
     requestAnimationFrame(updateVisualizations);
   });
 });
+
 function fetchData() {
   fetch("/history").then(r => r.json()).then(data => {
     entropyData = data.history;
     const currentMax = Math.max(...entropyData);
     if (currentMax > maxEntropyValue) maxEntropyValue = currentMax;
+
     document.getElementById('entropy').innerText = data.latest;
     document.getElementById('average').innerText = data.average.toLocaleString();
     document.getElementById('count').innerText = data.count.toLocaleString();
     document.querySelectorAll('.loading').forEach(el => el.classList.remove('loading'));
+
+    // Trigger alert if anomaly (spike beyond 90% of range)
+    if (data.latest > maxEntropyValue * 0.9) {
+      alertIndicator.classList.add('active');
+      setTimeout(() => alertIndicator.classList.remove('active'), 1500);
+    }
+
     requestAnimationFrame(updateVisualizations);
   }).catch(err => console.error('History fetch error:', err));
+
   fetch("/status").then(r => r.json()).then(data => {
     document.getElementById('wifi').innerText = `${data.mode}: ${data.ip}`;
     const s = data.uptime;
     document.getElementById('uptime').innerText = `${Math.floor(s/3600)}h ${Math.floor(s%3600/60)}m ${s%60}s`;
   }).catch(err => console.error('Status fetch error:', err));
 }
+
 function updateVisualizations() {
-    if (!entropyData || entropyData.length === 0) return;
-    drawMainVisualization();
-    drawSecondaryVisualization();
+  if (!entropyData || entropyData.length === 0) return;
+  drawMainVisualization();
+  drawSecondaryVisualization();
+  drawOscilloscope();
 }
+
 function drawMainVisualization() {
-    const ctx = mainCtx;
-    const w = mainCanvas.width;
-    const h = mainCanvas.height;
-    ctx.clearRect(0, 0, w, h);
-    // Draw grid
-    ctx.strokeStyle = '#330000'; ctx.lineWidth = 1; 
-    for(let i=0; i<=10; i++){ ctx.beginPath(); ctx.moveTo(0, i*h/10); ctx.lineTo(w, i*h/10); ctx.stroke(); }
-    for(let i=0; i<=20; i++){ ctx.beginPath(); ctx.moveTo(i*w/20, 0); ctx.lineTo(i*w/20, h); ctx.stroke(); }
+  const ctx = mainCtx;
+  const w = mainCanvas.width;
+  const h = mainCanvas.height;
+  ctx.clearRect(0, 0, w, h);
 
-    if (visMode.main === 'waveform') {
-        ctx.strokeStyle = '#ff0000'; ctx.lineWidth = 1.5; ctx.beginPath();
-        for (let i = 0; i < entropyData.length; i++) {
-            const x = i * w / (entropyData.length - 1);
-            const y = h - (entropyData[i] / maxEntropyValue * h);
-            i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-        }
-        ctx.stroke();
-    } else if (visMode.main === 'phase') {
-        ctx.fillStyle = '#ff0000';
-        for (let i = 1; i < entropyData.length; i++) {
-            const x = (entropyData[i-1] / maxEntropyValue) * w;
-            const y = h - (entropyData[i] / maxEntropyValue) * h;
-            ctx.globalAlpha = 0.5;
-            ctx.fillRect(x, y, 2, 2);
-        }
-        ctx.globalAlpha = 1.0;
+  ctx.strokeStyle = '#220000'; ctx.lineWidth = 1;
+  for(let i=0; i<=10; i++){ ctx.beginPath(); ctx.moveTo(0, i*h/10); ctx.lineTo(w, i*h/10); ctx.stroke(); }
+  for(let i=0; i<=20; i++){ ctx.beginPath(); ctx.moveTo(i*w/20, 0); ctx.lineTo(i*w/20, h); ctx.stroke(); }
+
+  if (visMode.main === 'waveform') {
+    ctx.strokeStyle = '#ff0000'; ctx.lineWidth = 1.5; ctx.beginPath();
+    for (let i = 0; i < entropyData.length; i++) {
+      const x = i * w / (entropyData.length - 1);
+      const y = h - (entropyData[i] / maxEntropyValue * h);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     }
+    ctx.stroke();
+  } else if (visMode.main === 'phase') {
+    ctx.fillStyle = '#ff0000';
+    for (let i = 1; i < entropyData.length; i++) {
+      const x = (entropyData[i-1] / maxEntropyValue) * w;
+      const y = h - (entropyData[i] / maxEntropyValue) * h;
+      ctx.globalAlpha = 0.5;
+      ctx.fillRect(x, y, 2, 2);
+    }
+    ctx.globalAlpha = 1.0;
+  }
 }
+
 function drawSecondaryVisualization() {
-    const ctx = secondaryCtx;
-    const w = secondaryCanvas.width;
-    const h = secondaryCanvas.height;
-    if (visMode.secondary === 'bit_freq') {
-        ctx.clearRect(0, 0, w, h);
-        // Draw grid
-        ctx.strokeStyle = '#330000'; ctx.lineWidth = 1; 
-        for(let i=0; i<=10; i++){ ctx.beginPath(); ctx.moveTo(0, i*h/10); ctx.lineTo(w, i*h/10); ctx.stroke(); }
-        // No vertical grid for bit freq for cleaner look
+  const ctx = secondaryCtx;
+  const w = secondaryCanvas.width;
+  const h = secondaryCanvas.height;
 
-        const bitCounts = new Array(32).fill(0);
-        entropyData.forEach(val => {
-            for (let i = 0; i < 32; i++) {
-                if ((val >> i) & 1) bitCounts[i]++;
-            }
-        });
-        const maxCount = Math.max(...bitCounts) || 1;
-        const barWidth = w / 32;
-        ctx.fillStyle = '#dd0000';
-        for (let i = 0; i < 32; i++) {
-            const barHeight = (bitCounts[i] / maxCount) * h;
-            ctx.fillRect(i * barWidth, h - barHeight, barWidth - 1, barHeight);
-        }
-    } else if (visMode.secondary === 'glitch') {
-        // Fade effect
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
-        ctx.fillRect(0, 0, w, h);
-        // Draw new glitches
-        const val = entropyData[entropyData.length - 1];
-        const count = (val & 0xF) + 1; // 1 to 16 glitches
-        ctx.fillStyle = '#ff0000';
-        for (let i = 0; i < count; i++) {
-            const x = (val >> (16 + i%8)) % w;
-            const y = (val >> (8 + i%8)) % h;
-            const rectW = (val >> (4 + i%4)) % 50 + 5;
-            const rectH = (val >> (20 + i%4)) % 50 + 5;
-            ctx.globalAlpha = Math.random() * 0.5 + 0.2;
-            ctx.fillRect(x, y, rectW, rectH);
-        }
-        ctx.globalAlpha = 1.0;
+  if (visMode.secondary === 'bit_freq') {
+    ctx.clearRect(0, 0, w, h);
+    ctx.strokeStyle = '#220000'; ctx.lineWidth = 1;
+    for(let i=0; i<=10; i++){ ctx.beginPath(); ctx.moveTo(0, i*h/10); ctx.lineTo(w, i*h/10); ctx.stroke(); }
+
+    const bitCounts = new Array(32).fill(0);
+    entropyData.forEach(val => {
+      for (let i = 0; i < 32; i++) {
+        if ((val >> i) & 1) bitCounts[i]++;
+      }
+    });
+    const maxCount = Math.max(...bitCounts) || 1;
+    const barWidth = w / 32;
+    ctx.fillStyle = '#cc0000';
+    for (let i = 0; i < 32; i++) {
+      const barHeight = (bitCounts[i] / maxCount) * h;
+      ctx.fillRect(i * barWidth, h - barHeight, barWidth - 1, barHeight);
     }
+  } else if (visMode.secondary === 'glitch') {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+    ctx.fillRect(0, 0, w, h);
+
+    const val = entropyData[entropyData.length - 1];
+    const count = (val & 0xF) + 1;
+    ctx.fillStyle = '#ff0000';
+    for (let i = 0; i < count; i++) {
+      const x = (val >> (16 + i%8)) % w;
+      const y = (val >> (8 + i%8)) % h;
+      const rectW = (val >> (4 + i%4)) % 50 + 5;
+      const rectH = (val >> (20 + i%4)) % 50 + 5;
+      ctx.globalAlpha = Math.random() * 0.5 + 0.2;
+      ctx.fillRect(x, y, rectW, rectH);
+    }
+    ctx.globalAlpha = 1.0;
+  }
 }
+
+function drawOscilloscope() {
+  const ctx = oscCtx;
+  const w = oscCanvas.width;
+  const h = oscCanvas.height;
+
+  // Scroll left
+  const imageData = ctx.getImageData(1, 0, w-1, h);
+  ctx.putImageData(imageData, 0, 0);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(w-1, 0, 1, h);
+
+  // Draw latest value
+  const val = entropyData[entropyData.length - 1];
+  const y = h - (val / maxEntropyValue * h);
+  ctx.strokeStyle = (val % 2 === 1) ? '#aa00ff' : '#ff0000';
+  ctx.beginPath();
+  ctx.moveTo(w-1, y);
+  ctx.lineTo(w-1, y);
+  ctx.stroke();
+}
+
 document.addEventListener('DOMContentLoaded', () => {
-    resizeCanvases();
-    setInterval(fetchData, 2000);
-    fetchData();
+  resizeCanvases();
+  setInterval(fetchData, 2000);
+  fetchData();
 });
 </script>
 </body>
