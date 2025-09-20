@@ -1,6 +1,6 @@
 # ESP32 Resonator Entropy Reader
 
-![screenshot of web dashboard]([path/to/image.png](https://ibb.co/VW8LNHGh))
+![screenshot of web dashboard]([RESONATOR_ENTROPY/msedge_tOfScD6nCJ.gif))
 
 
 This project turns your ESP32 into an entropy generator and visualizer. It reads analog noise from pins to generate entropy values and provides a web interface for real-time visualization.
